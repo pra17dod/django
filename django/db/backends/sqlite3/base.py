@@ -25,7 +25,6 @@ from django.utils.asyncio import async_unsafe
 from django.utils.dateparse import parse_datetime, parse_time
 from django.utils.duration import duration_microseconds
 from django.utils.regex_helper import _lazy_re_compile
-from django.utils.version import PY38
 
 from .client import DatabaseClient
 from .creation import DatabaseCreation
@@ -180,9 +179,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
                 "settings.DATABASES is improperly configured. "
                 "Please supply the NAME value.")
         kwargs = {
-            # TODO: Remove str() when dropping support for PY36.
-            # https://bugs.python.org/issue33496
-            'database': str(settings_dict['NAME']),
+            'database': settings_dict['NAME'],
             'detect_types': Database.PARSE_DECLTYPES | Database.PARSE_COLNAMES,
             **settings_dict['OPTIONS'],
         }
@@ -206,13 +203,10 @@ class DatabaseWrapper(BaseDatabaseWrapper):
     @async_unsafe
     def get_new_connection(self, conn_params):
         conn = Database.connect(**conn_params)
-        if PY38:
-            create_deterministic_function = functools.partial(
-                conn.create_function,
-                deterministic=True,
-            )
-        else:
-            create_deterministic_function = conn.create_function
+        create_deterministic_function = functools.partial(
+            conn.create_function,
+            deterministic=True,
+        )
         create_deterministic_function('django_date_extract', 2, _sqlite_datetime_extract)
         create_deterministic_function('django_date_trunc', 4, _sqlite_date_trunc)
         create_deterministic_function('django_datetime_cast_date', 3, _sqlite_datetime_cast_date)
@@ -257,7 +251,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         create_deterministic_function('SQRT', 1, none_guard(math.sqrt))
         create_deterministic_function('TAN', 1, none_guard(math.tan))
         # Don't use the built-in RANDOM() function because it returns a value
-        # in the range [2^63, 2^63 - 1] instead of [0, 1).
+        # in the range [-1 * 2^63, 2^63 - 1] instead of [0, 1).
         conn.create_function('RAND', 0, random.random)
         conn.create_aggregate('STDDEV_POP', 1, list_aggregate(statistics.pstdev))
         conn.create_aggregate('STDDEV_SAMP', 1, list_aggregate(statistics.stdev))

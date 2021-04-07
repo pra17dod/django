@@ -61,6 +61,8 @@ spelling_lang = 'en_US'
 # Location of word list.
 spelling_word_list_filename = 'spelling_wordlist'
 
+spelling_warning = True
+
 # Add any paths that contain templates here, relative to this directory.
 # templates_path = []
 
@@ -102,10 +104,11 @@ else:
 django_next_version = '4.0'
 
 extlinks = {
+    'bpo': ('https://bugs.python.org/issue%s', 'bpo-'),
     'commit': ('https://github.com/django/django/commit/%s', ''),
     'cve': ('https://nvd.nist.gov/vuln/detail/CVE-%s', 'CVE-'),
     # A file or directory. GitHub redirects from blob to tree if needed.
-    'source': ('https://github.com/django/django/blob/master/%s', ''),
+    'source': ('https://github.com/django/django/blob/main/%s', ''),
     'ticket': ('https://code.djangoproject.com/ticket/%s', '#'),
 }
 
@@ -124,7 +127,7 @@ today_fmt = '%B %d, %Y'
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
-exclude_patterns = ['_build', '_theme']
+exclude_patterns = ['_build', '_theme', 'requirements.txt']
 
 # The reST default role (used for this markup: `text`) to use for all documents.
 default_role = "default-role-error"

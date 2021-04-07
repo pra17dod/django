@@ -62,6 +62,7 @@ class BaseDatabaseSchemaEditor:
     sql_alter_column_not_null = "ALTER COLUMN %(column)s SET NOT NULL"
     sql_alter_column_default = "ALTER COLUMN %(column)s SET DEFAULT %(default)s"
     sql_alter_column_no_default = "ALTER COLUMN %(column)s DROP DEFAULT"
+    sql_alter_column_no_default_null = sql_alter_column_no_default
     sql_alter_column_collate = "ALTER COLUMN %(column)s TYPE %(type)s%(collation)s"
     sql_delete_column = "ALTER TABLE %(table)s DROP COLUMN %(column)s CASCADE"
     sql_rename_column = "ALTER TABLE %(table)s RENAME COLUMN %(old_column)s TO %(new_column)s"
@@ -360,6 +361,8 @@ class BaseDatabaseSchemaEditor:
             not self.connection.features.supports_expression_indexes
         ):
             return None
+        # Index.create_sql returns interpolated SQL which makes params=None a
+        # necessity to avoid escaping attempts on execution.
         self.execute(index.create_sql(model, self), params=None)
 
     def remove_index(self, model, index):
@@ -375,7 +378,9 @@ class BaseDatabaseSchemaEditor:
         """Add a constraint to a model."""
         sql = constraint.create_sql(model, self)
         if sql:
-            self.execute(sql)
+            # Constraint.create_sql returns interpolated SQL which makes
+            # params=None a necessity to avoid escaping attempts on execution.
+            self.execute(sql, params=None)
 
     def remove_constraint(self, model, constraint):
         """Remove a constraint from a model."""
@@ -887,7 +892,13 @@ class BaseDatabaseSchemaEditor:
             params = []
 
         new_db_params = new_field.db_parameters(connection=self.connection)
-        sql = self.sql_alter_column_no_default if drop else self.sql_alter_column_default
+        if drop:
+            if new_field.null:
+                sql = self.sql_alter_column_no_default_null
+            else:
+                sql = self.sql_alter_column_no_default
+        else:
+            sql = self.sql_alter_column_default
         return (
             sql % {
                 'column': self.quote_name(new_field.column),
@@ -1173,16 +1184,16 @@ class BaseDatabaseSchemaEditor:
 
     def _unique_sql(
         self, model, fields, name, condition=None, deferrable=None,
-        include=None, opclasses=None,
+        include=None, opclasses=None, expressions=None,
     ):
         if (
             deferrable and
             not self.connection.features.supports_deferrable_unique_constraints
         ):
             return None
-        if condition or include or opclasses:
-            # Databases support conditional and covering unique constraints via
-            # a unique index.
+        if condition or include or opclasses or expressions:
+            # Databases support conditional, covering, and functional unique
+            # constraints via a unique index.
             sql = self._create_unique_sql(
                 model,
                 fields,
@@ -1190,6 +1201,7 @@ class BaseDatabaseSchemaEditor:
                 condition=condition,
                 include=include,
                 opclasses=opclasses,
+                expressions=expressions,
             )
             if sql:
                 self.deferred_sql.append(sql)
@@ -1205,7 +1217,7 @@ class BaseDatabaseSchemaEditor:
 
     def _create_unique_sql(
         self, model, columns, name=None, condition=None, deferrable=None,
-        include=None, opclasses=None,
+        include=None, opclasses=None, expressions=None,
     ):
         if (
             (
@@ -1213,23 +1225,28 @@ class BaseDatabaseSchemaEditor:
                 not self.connection.features.supports_deferrable_unique_constraints
             ) or
             (condition and not self.connection.features.supports_partial_indexes) or
-            (include and not self.connection.features.supports_covering_indexes)
+            (include and not self.connection.features.supports_covering_indexes) or
+            (expressions and not self.connection.features.supports_expression_indexes)
         ):
             return None
 
         def create_unique_name(*args, **kwargs):
             return self.quote_name(self._create_index_name(*args, **kwargs))
 
+        compiler = Query(model, alias_cols=False).get_compiler(connection=self.connection)
         table = Table(model._meta.db_table, self.quote_name)
         if name is None:
             name = IndexName(model._meta.db_table, columns, '_uniq', create_unique_name)
         else:
             name = self.quote_name(name)
-        columns = self._index_columns(table, columns, col_suffixes=(), opclasses=opclasses)
-        if condition or include or opclasses:
+        if condition or include or opclasses or expressions:
             sql = self.sql_create_unique_index
         else:
             sql = self.sql_create_unique
+        if columns:
+            columns = self._index_columns(table, columns, col_suffixes=(), opclasses=opclasses)
+        else:
+            columns = Expressions(model._meta.db_table, expressions, compiler, self.quote_value)
         return Statement(
             sql,
             table=table,
@@ -1242,7 +1259,7 @@ class BaseDatabaseSchemaEditor:
 
     def _delete_unique_sql(
         self, model, name, condition=None, deferrable=None, include=None,
-        opclasses=None,
+        opclasses=None, expressions=None,
     ):
         if (
             (
@@ -1250,10 +1267,12 @@ class BaseDatabaseSchemaEditor:
                 not self.connection.features.supports_deferrable_unique_constraints
             ) or
             (condition and not self.connection.features.supports_partial_indexes) or
-            (include and not self.connection.features.supports_covering_indexes)
+            (include and not self.connection.features.supports_covering_indexes) or
+            (expressions and not self.connection.features.supports_expression_indexes)
+
         ):
             return None
-        if condition or include or opclasses:
+        if condition or include or opclasses or expressions:
             sql = self.sql_delete_index
         else:
             sql = self.sql_delete_unique

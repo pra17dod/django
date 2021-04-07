@@ -319,9 +319,9 @@ Specifies the number of indentation spaces to use in the output. Defaults to
 .. django-admin-option:: --exclude EXCLUDE, -e EXCLUDE
 
 Prevents specific applications or models (specified in the form of
-``app_label.ModelName``) from being dumped. If you specify a model name, the
-output will be restricted to that model, rather than the entire application.
-You can also mix application names and model names.
+``app_label.ModelName``) from being dumped. If you specify a model name, then
+only that model will be excluded, rather than the entire application. You can
+also mix application names and model names.
 
 If you want to exclude multiple applications, pass ``--exclude`` more than
 once::
@@ -1497,6 +1497,12 @@ don't.
 Runs only tests :ref:`marked with the specified tags <topics-tagging-tests>`.
 May be specified multiple times and combined with :option:`test --exclude-tag`.
 
+Tests that fail to load are always considered matching.
+
+.. versionchanged:: 4.0
+
+    In older versions, tests that failed to load did not match tags.
+
 .. option:: --exclude-tag EXCLUDE_TAGS
 
 Excludes tests :ref:`marked with the specified tags <topics-tagging-tests>`.
@@ -1506,10 +1512,6 @@ May be specified multiple times and combined with :option:`test --tag`.
 
 Runs test methods and classes matching test name patterns, in the same way as
 :option:`unittest's -k option<unittest.-k>`. Can be specified multiple times.
-
-.. admonition:: Python 3.7 and later
-
-    This feature is only available for Python 3.7 and later.
 
 .. django-admin-option:: --pdb
 
